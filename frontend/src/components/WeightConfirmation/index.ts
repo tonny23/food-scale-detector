@@ -1,0 +1,1 @@
+export { WeightConfirmation } from './WeightConfirmation';
