@@ -4,11 +4,13 @@ import path from 'path';
 import fs from 'fs';
 import { sessionService } from '../services/SessionService.js';
 import { OCRService } from '../services/OCRService.js';
+import { FoodDetectionService } from '../services/FoodDetectionService.js';
 import { validateImageUpload, validateFoodConfirmation } from '../schemas/validation.js';
 import type { ProcessImageResponse, ConfirmSelectionRequest, ErrorResponse } from '../types/api.js';
 
 const router = express.Router();
 const ocrService = new OCRService();
+const foodDetectionService = new FoodDetectionService();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -71,8 +73,11 @@ router.post('/upload', upload.single('image'), async (req, res) => {
     // Read the uploaded image file
     const imageBuffer = fs.readFileSync(req.file.path);
 
-    // Perform OCR to detect scale weight
-    const detectedWeight = await ocrService.readScaleWeight(imageBuffer);
+    // Perform parallel processing of OCR and food detection
+    const [detectedWeight, detectedFood] = await Promise.all([
+      ocrService.readScaleWeight(imageBuffer),
+      foodDetectionService.detectFood(imageBuffer)
+    ]);
 
     // Validate that the image contains a scale (optional validation)
     const scaleValidation = await ocrService.validateScaleImage(imageBuffer);
@@ -99,37 +104,64 @@ router.post('/upload', upload.single('image'), async (req, res) => {
       } as ErrorResponse);
     }
 
-    // For now, return mock food detection data since ML processing isn't implemented yet
-    // This will be replaced with actual food detection in later tasks
+    // Check if food detection failed or has low confidence
+    if (detectedFood.length === 0) {
+      return res.status(422).json({
+        error: 'No food detected',
+        code: 'NO_FOOD_DETECTED',
+        message: 'Could not detect any food items in the image. Please try again with a clearer image.',
+        details: {
+          detectedWeight,
+          scaleValidation,
+          suggestions: [
+            'Ensure food items are clearly visible in the image',
+            'Try taking the photo from a different angle',
+            'Make sure the lighting is adequate',
+            'Remove any obstructions that might hide the food'
+          ]
+        }
+      } as ErrorResponse);
+    }
+
+    // Check for session continuity (sequential ingredient addition)
+    let weightDifference: number | undefined;
+    let previousWeight: number | undefined;
+
+    // Get existing session if this is a continuation
+    const existingSessionId = req.body.sessionId;
+    if (existingSessionId) {
+      const existingSession = await sessionService.getSession(existingSessionId);
+      if (existingSession) {
+        previousWeight = existingSession.totalWeight;
+        weightDifference = detectedWeight.value - previousWeight;
+        
+        // Validate that new weight is greater than previous weight
+        if (weightDifference <= 0) {
+          return res.status(422).json({
+            error: 'Invalid weight difference',
+            code: 'INVALID_WEIGHT_DIFFERENCE',
+            message: 'The new weight should be greater than the previous weight when adding ingredients.',
+            details: {
+              currentWeight: detectedWeight.value,
+              previousWeight,
+              weightDifference,
+              suggestions: [
+                'Ensure you have added new food to the scale',
+                'Check that the scale reading is accurate',
+                'Make sure the scale has not been reset'
+              ]
+            }
+          } as ErrorResponse);
+        }
+      }
+    }
+
     const response: ProcessImageResponse = {
       sessionId,
-      detectedFood: [
-        {
-          food: {
-            id: 'mock_food_1',
-            name: 'Apple',
-            confidence: 0.85,
-            alternativeNames: ['Red Apple', 'Gala Apple'],
-            category: 'Fruits'
-          },
-          alternatives: [
-            {
-              id: 'mock_food_2',
-              name: 'Red Apple',
-              confidence: 0.75,
-              alternativeNames: ['Apple'],
-              category: 'Fruits'
-            }
-          ],
-          boundingBox: {
-            x: 100,
-            y: 100,
-            width: 200,
-            height: 200
-          }
-        }
-      ],
-      detectedWeight
+      detectedFood,
+      detectedWeight,
+      weightDifference,
+      previousWeight
     };
 
     return res.json(response);

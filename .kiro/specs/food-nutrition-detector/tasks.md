@@ -47,7 +47,7 @@
   - Create fallback to manual input when OCR confidence is low
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 7. Set up food detection using open-source ML models
+- [x] 7. Set up food detection using open-source ML models
   - Research and select appropriate food detection model (YOLOv8 or MobileNet)
   - Create Python microservice for food detection processing
   - Implement image preprocessing and model inference pipeline
