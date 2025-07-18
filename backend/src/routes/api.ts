@@ -128,38 +128,38 @@ router.post('/upload', upload.single('image'), async (req, res) => {
     // Check for session continuity (sequential ingredient addition)
     let weightDifference: number | undefined;
     let previousWeight: number | undefined;
+    let sessionIdToUse = sessionId;
 
     // Get existing session if this is a continuation
     const existingSessionId = req.body.sessionId;
     if (existingSessionId) {
-      const existingSession = await sessionService.getSession(existingSessionId);
-      if (existingSession) {
-        previousWeight = existingSession.totalWeight;
-        weightDifference = detectedWeight.value - previousWeight;
-        
-        // Validate that new weight is greater than previous weight
-        if (weightDifference <= 0) {
-          return res.status(422).json({
-            error: 'Invalid weight difference',
-            code: 'INVALID_WEIGHT_DIFFERENCE',
-            message: 'The new weight should be greater than the previous weight when adding ingredients.',
-            details: {
-              currentWeight: detectedWeight.value,
-              previousWeight,
-              weightDifference,
-              suggestions: [
-                'Ensure you have added new food to the scale',
-                'Check that the scale reading is accurate',
-                'Make sure the scale has not been reset'
-              ]
-            }
-          } as ErrorResponse);
-        }
+      const weightValidation = await sessionService.calculateWeightDifference(existingSessionId, detectedWeight.value);
+      
+      if (!weightValidation.isValid) {
+        return res.status(422).json({
+          error: 'Invalid weight difference',
+          code: 'INVALID_WEIGHT_DIFFERENCE',
+          message: weightValidation.error || 'The new weight should be greater than the previous weight when adding ingredients.',
+          details: {
+            currentWeight: detectedWeight.value,
+            previousWeight: weightValidation.previousWeight,
+            weightDifference: weightValidation.difference,
+            suggestions: [
+              'Ensure you have added new food to the scale',
+              'Check that the scale reading is accurate',
+              'Make sure the scale has not been reset'
+            ]
+          }
+        } as ErrorResponse);
       }
+
+      weightDifference = weightValidation.difference;
+      previousWeight = weightValidation.previousWeight;
+      sessionIdToUse = existingSessionId; // Use existing session instead of creating new one
     }
 
     const response: ProcessImageResponse = {
-      sessionId,
+      sessionId: sessionIdToUse,
       detectedFood,
       detectedWeight,
       weightDifference,
@@ -426,6 +426,36 @@ router.get('/foods/:foodId/nutrition', async (req, res) => {
       error: 'Nutrition data retrieval failed',
       code: 'NUTRITION_ERROR',
       message: 'An error occurred while retrieving nutrition data'
+    } as ErrorResponse);
+  }
+});
+
+// GET /api/session/:sessionId/summary - Get meal summary with cumulative nutrition
+router.get('/session/:sessionId/summary', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    const summary = await sessionService.getMealSummary(sessionId);
+    if (!summary) {
+      return res.status(404).json({
+        error: 'Session not found',
+        code: 'SESSION_NOT_FOUND',
+        message: 'The session has expired or does not exist'
+      } as ErrorResponse);
+    }
+
+    return res.json({
+      sessionId,
+      ...summary,
+      message: 'Meal summary retrieved successfully'
+    });
+
+  } catch (error) {
+    console.error('Meal summary error:', error);
+    return res.status(500).json({
+      error: 'Meal summary retrieval failed',
+      code: 'SUMMARY_ERROR',
+      message: 'Could not retrieve meal summary'
     } as ErrorResponse);
   }
 });

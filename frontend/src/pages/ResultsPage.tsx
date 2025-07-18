@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
+import { MealTracker } from '../components/MealTracker';
 
 interface NutritionInfo {
   calories: number;
@@ -23,7 +24,12 @@ interface FoodItem {
   category: string;
 }
 
-export const ResultsPage: React.FC = () => {
+interface SingleIngredientViewProps {
+  onStartOver: () => void;
+  onAddMore: () => void;
+}
+
+const SingleIngredientView: React.FC<SingleIngredientViewProps> = ({ onStartOver, onAddMore }) => {
   const navigate = useNavigate();
   const [foodItem, setFoodItem] = useState<FoodItem | null>(null);
   const [weight, setWeight] = useState<{ weight: number; unit: string } | null>(null);
@@ -36,7 +42,7 @@ export const ResultsPage: React.FC = () => {
     const confirmedWeight = sessionStorage.getItem('confirmedWeight');
     
     if (!selectedFood || !confirmedWeight) {
-      navigate('/');
+      onStartOver();
       return;
     }
 
@@ -95,49 +101,32 @@ export const ResultsPage: React.FC = () => {
     };
 
     calculateNutrition();
-  }, [navigate]);
-
-  const handleStartOver = () => {
-    // Clear session storage
-    sessionStorage.removeItem('uploadedImage');
-    sessionStorage.removeItem('uploadedImageFile');
-    sessionStorage.removeItem('selectedFood');
-    sessionStorage.removeItem('confirmedWeight');
-    
-    navigate('/');
-  };
-
-  const handleAddMore = () => {
-    // In a real app, this would start the sequential ingredient addition flow
-    alert('Sequential ingredient addition would be implemented here');
-  };
+  }, [onStartOver]);
 
   if (isLoading) {
     return (
-      <Layout title="Calculating Nutrition">
-        <div style={{ textAlign: 'center', padding: '2rem' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            border: '4px solid #f3f3f3',
-            borderTop: '4px solid #4299e1',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 1rem'
-          }}></div>
-          <h3 style={{ margin: '0 0 0.5rem 0', color: '#2d3748' }}>
-            Calculating nutrition information...
-          </h3>
-          <p style={{ margin: 0, color: '#718096' }}>
-            Please wait while we process your food data
-          </p>
-        </div>
-      </Layout>
+      <div style={{ textAlign: 'center', padding: '2rem' }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '4px solid #f3f3f3',
+          borderTop: '4px solid #4299e1',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+          margin: '0 auto 1rem'
+        }}></div>
+        <h3 style={{ margin: '0 0 0.5rem 0', color: '#2d3748' }}>
+          Calculating nutrition information...
+        </h3>
+        <p style={{ margin: 0, color: '#718096' }}>
+          Please wait while we process your food data
+        </p>
+      </div>
     );
   }
 
   return (
-    <Layout title="Nutrition Results">
+    <div>
       <div style={{ marginBottom: '1rem' }}>
         <button 
           onClick={() => navigate('/confirm-weight')}
@@ -279,7 +268,7 @@ export const ResultsPage: React.FC = () => {
             alignItems: 'center'
           }}>
             <button
-              onClick={handleAddMore}
+              onClick={onAddMore}
               style={{
                 backgroundColor: '#48bb78',
                 color: 'white',
@@ -296,7 +285,7 @@ export const ResultsPage: React.FC = () => {
               Add More Ingredients
             </button>
             <button
-              onClick={handleStartOver}
+              onClick={onStartOver}
               style={{
                 backgroundColor: '#a0aec0',
                 color: 'white',
@@ -314,6 +303,108 @@ export const ResultsPage: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+};
+
+export const ResultsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [showMealTracker, setShowMealTracker] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Check if we have session data or individual ingredient data
+    const storedSessionId = sessionStorage.getItem('sessionId');
+    const selectedFood = sessionStorage.getItem('selectedFood');
+    const confirmedWeight = sessionStorage.getItem('confirmedWeight');
+    
+    if (storedSessionId) {
+      // We have a session - show meal tracker
+      setSessionId(storedSessionId);
+      setShowMealTracker(true);
+      setIsLoading(false);
+    } else if (selectedFood && confirmedWeight) {
+      // We have individual ingredient data - show single ingredient view
+      setShowMealTracker(false);
+      setIsLoading(false);
+    } else {
+      // No data - redirect to upload
+      navigate('/');
+      return;
+    }
+  }, [navigate]);
+
+  const handleStartOver = () => {
+    // Clear all session storage
+    sessionStorage.removeItem('uploadedImage');
+    sessionStorage.removeItem('uploadedImageFile');
+    sessionStorage.removeItem('selectedFood');
+    sessionStorage.removeItem('confirmedWeight');
+    sessionStorage.removeItem('sessionId');
+    
+    navigate('/');
+  };
+
+  const handleAddIngredient = () => {
+    // Store current session ID and navigate to upload for next ingredient
+    if (sessionId) {
+      sessionStorage.setItem('continueSession', sessionId);
+    }
+    navigate('/');
+  };
+
+  const handleFinalizeMeal = () => {
+    // Show final meal summary or navigate to a summary page
+    alert('Meal finalized! In a real app, this would show the final summary or save the meal.');
+    handleStartOver();
+  };
+
+  const handleWeightCorrection = (componentIndex: number, newWeight: number) => {
+    // Handle weight correction - the MealTracker component handles the API call
+    console.log(`Weight corrected for ingredient ${componentIndex}: ${newWeight}g`);
+  };
+
+  if (isLoading) {
+    return (
+      <Layout title="Calculating Nutrition">
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            border: '4px solid #f3f3f3',
+            borderTop: '4px solid #4299e1',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 1rem'
+          }}></div>
+          <h3 style={{ margin: '0 0 0.5rem 0', color: '#2d3748' }}>
+            Calculating nutrition information...
+          </h3>
+          <p style={{ margin: 0, color: '#718096' }}>
+            Please wait while we process your food data
+          </p>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout title={showMealTracker ? "Meal Tracker" : "Nutrition Results"}>
+      {showMealTracker && sessionId ? (
+        <MealTracker
+          sessionId={sessionId}
+          onAddIngredient={handleAddIngredient}
+          onFinalizeMeal={handleFinalizeMeal}
+          onWeightCorrection={handleWeightCorrection}
+          showActions={true}
+        />
+      ) : (
+        <SingleIngredientView 
+          onStartOver={handleStartOver}
+          onAddMore={handleAddIngredient}
+        />
       )}
     </Layout>
   );

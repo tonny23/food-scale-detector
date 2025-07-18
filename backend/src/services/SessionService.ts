@@ -127,6 +127,86 @@ export class SessionService {
     return updatedSession;
   }
 
+  async calculateWeightDifference(sessionId: string, newTotalWeight: number): Promise<{ difference: number; previousWeight: number; isValid: boolean; error?: string }> {
+    const session = await this.getSession(sessionId);
+    if (!session) {
+      return { difference: 0, previousWeight: 0, isValid: false, error: 'Session not found' };
+    }
+
+    const previousWeight = session.totalWeight;
+    const difference = newTotalWeight - previousWeight;
+
+    // Validate weight difference
+    if (difference <= 0) {
+      return {
+        difference,
+        previousWeight,
+        isValid: false,
+        error: `New weight (${newTotalWeight.toFixed(1)}g) must be greater than previous weight (${previousWeight.toFixed(1)}g)`
+      };
+    }
+
+    // Check for unreasonably large additions (more than 5kg)
+    if (difference > 5000) {
+      return {
+        difference,
+        previousWeight,
+        isValid: false,
+        error: `Weight increase of ${difference.toFixed(1)}g seems too large. Please verify the reading.`
+      };
+    }
+
+    // Check for very small additions (less than 1g) - might be measurement error
+    if (difference < 1) {
+      return {
+        difference,
+        previousWeight,
+        isValid: false,
+        error: `Weight increase of ${difference.toFixed(1)}g is too small. Minimum addition is 1g.`
+      };
+    }
+
+    return { difference, previousWeight, isValid: true };
+  }
+
+  async getMealSummary(sessionId: string): Promise<{ totalNutrition: any; totalWeight: number; componentCount: number } | null> {
+    const session = await this.getSession(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    // Calculate cumulative nutrition
+    const totalNutrition = session.components.reduce((total, component) => ({
+      calories: total.calories + component.nutrition.calories,
+      protein: total.protein + component.nutrition.protein,
+      carbohydrates: total.carbohydrates + component.nutrition.carbohydrates,
+      fat: total.fat + component.nutrition.fat,
+      fiber: total.fiber + component.nutrition.fiber,
+      sodium: total.sodium + component.nutrition.sodium,
+      sugar: total.sugar + component.nutrition.sugar,
+      saturatedFat: total.saturatedFat + component.nutrition.saturatedFat,
+      cholesterol: total.cholesterol + component.nutrition.cholesterol,
+      potassium: total.potassium + component.nutrition.potassium
+    }), {
+      calories: 0,
+      protein: 0,
+      carbohydrates: 0,
+      fat: 0,
+      fiber: 0,
+      sodium: 0,
+      sugar: 0,
+      saturatedFat: 0,
+      cholesterol: 0,
+      potassium: 0
+    });
+
+    return {
+      totalNutrition,
+      totalWeight: session.totalWeight,
+      componentCount: session.components.length
+    };
+  }
+
   async deleteSession(sessionId: string): Promise<boolean> {
     await this.connect();
     
