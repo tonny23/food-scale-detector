@@ -72,8 +72,8 @@ export const FoodConfirmationPage: React.FC = () => {
   };
 
   const handleManualSearch = () => {
-    // In a real app, this would open a search interface
-    alert('Manual search functionality would be implemented here');
+    // This is now handled by the FoodConfirmation component itself
+    // No need for additional logic here
   };
 
   return (

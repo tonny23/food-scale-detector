@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { FoodSearch } from '../FoodSearch';
 import './FoodConfirmation.css';
 
 interface FoodItem {
@@ -12,7 +13,7 @@ interface FoodItem {
 interface FoodConfirmationProps {
   detectedFood: FoodItem[];
   onFoodConfirm: (food: FoodItem) => void;
-  onManualSearch: () => void;
+  onManualSearch?: () => void;
   isLoading?: boolean;
 }
 
@@ -23,6 +24,7 @@ export const FoodConfirmation: React.FC<FoodConfirmationProps> = ({
   isLoading = false
 }) => {
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
   const handleFoodSelect = (food: FoodItem) => {
     setSelectedFood(food);
@@ -32,6 +34,23 @@ export const FoodConfirmation: React.FC<FoodConfirmationProps> = ({
     if (selectedFood) {
       onFoodConfirm(selectedFood);
     }
+  };
+
+  const handleManualSearchClick = () => {
+    if (onManualSearch) {
+      onManualSearch();
+    } else {
+      setIsSearchModalOpen(true);
+    }
+  };
+
+  const handleSearchFoodSelect = (food: FoodItem) => {
+    setIsSearchModalOpen(false);
+    onFoodConfirm(food);
+  };
+
+  const handleSearchCancel = () => {
+    setIsSearchModalOpen(false);
   };
 
   const formatConfidence = (confidence: number) => {
@@ -62,7 +81,7 @@ export const FoodConfirmation: React.FC<FoodConfirmationProps> = ({
             <li>Ensuring good lighting</li>
             <li>Making sure the food is clearly visible</li>
           </ul>
-          <button onClick={onManualSearch} className="manual-search-button">
+          <button onClick={handleManualSearchClick} className="manual-search-button">
             Search Manually
           </button>
         </div>
@@ -115,12 +134,18 @@ export const FoodConfirmation: React.FC<FoodConfirmationProps> = ({
           Confirm Selection
         </button>
         <button
-          onClick={onManualSearch}
+          onClick={handleManualSearchClick}
           className="manual-search-button secondary"
         >
           None of these? Search manually
         </button>
       </div>
+
+      <FoodSearch
+        isOpen={isSearchModalOpen}
+        onFoodSelect={handleSearchFoodSelect}
+        onCancel={handleSearchCancel}
+      />
     </div>
   );
 };

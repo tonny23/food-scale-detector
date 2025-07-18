@@ -5,12 +5,14 @@ import fs from 'fs';
 import { sessionService } from '../services/SessionService.js';
 import { OCRService } from '../services/OCRService.js';
 import { FoodDetectionService } from '../services/FoodDetectionService.js';
+import { NutritionService } from '../services/NutritionService.js';
 import { validateImageUpload, validateFoodConfirmation } from '../schemas/validation.js';
 import type { ProcessImageResponse, ConfirmSelectionRequest, ErrorResponse } from '../types/api.js';
 
 const router = express.Router();
 const ocrService = new OCRService();
 const foodDetectionService = new FoodDetectionService();
+const nutritionService = new NutritionService();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -335,6 +337,95 @@ router.post('/session/:sessionId/extend', async (req, res) => {
       error: 'Session extension failed',
       code: 'SESSION_EXTEND_ERROR',
       message: 'Could not extend session'
+    } as ErrorResponse);
+  }
+});
+
+// GET /api/foods/search - Search USDA food database
+router.get('/foods/search', async (req, res) => {
+  try {
+    const { q: query, limit = '10' } = req.query;
+    
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({
+        error: 'Missing search query',
+        code: 'MISSING_QUERY',
+        message: 'Please provide a search query parameter "q"'
+      } as ErrorResponse);
+    }
+
+    if (query.trim().length < 2) {
+      return res.status(400).json({
+        error: 'Query too short',
+        code: 'QUERY_TOO_SHORT',
+        message: 'Search query must be at least 2 characters long'
+      } as ErrorResponse);
+    }
+
+    const limitNum = parseInt(limit as string, 10);
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 50) {
+      return res.status(400).json({
+        error: 'Invalid limit',
+        code: 'INVALID_LIMIT',
+        message: 'Limit must be a number between 1 and 50'
+      } as ErrorResponse);
+    }
+
+    const foods = await nutritionService.searchFoodDatabase(query.trim(), limitNum);
+    
+    return res.json({
+      query: query.trim(),
+      results: foods,
+      count: foods.length
+    });
+
+  } catch (error) {
+    console.error('Food search error:', error);
+    return res.status(500).json({
+      error: 'Food search failed',
+      code: 'SEARCH_ERROR',
+      message: 'An error occurred while searching for foods'
+    } as ErrorResponse);
+  }
+});
+
+// GET /api/foods/:foodId/nutrition - Get nutrition data for specific food and weight
+router.get('/foods/:foodId/nutrition', async (req, res) => {
+  try {
+    const { foodId } = req.params;
+    const { weight } = req.query;
+    
+    if (!weight || typeof weight !== 'string') {
+      return res.status(400).json({
+        error: 'Missing weight parameter',
+        code: 'MISSING_WEIGHT',
+        message: 'Please provide a weight parameter in grams'
+      } as ErrorResponse);
+    }
+
+    const weightNum = parseFloat(weight);
+    if (isNaN(weightNum) || weightNum <= 0) {
+      return res.status(400).json({
+        error: 'Invalid weight',
+        code: 'INVALID_WEIGHT',
+        message: 'Weight must be a positive number in grams'
+      } as ErrorResponse);
+    }
+
+    const nutrition = await nutritionService.getNutritionData(foodId, weightNum);
+    
+    return res.json({
+      foodId,
+      weight: weightNum,
+      nutrition
+    });
+
+  } catch (error) {
+    console.error('Nutrition data error:', error);
+    return res.status(500).json({
+      error: 'Nutrition data retrieval failed',
+      code: 'NUTRITION_ERROR',
+      message: 'An error occurred while retrieving nutrition data'
     } as ErrorResponse);
   }
 });
