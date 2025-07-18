@@ -233,6 +233,62 @@
   font-size: 0.875rem;
 }
 
+.nutrition-preview {
+  background-color: #f0fff4;
+  border: 1px solid #9ae6b4;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.nutrition-preview h4 {
+  margin: 0 0 0.75rem 0;
+  color: #2d3748;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nutrition-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.nutrition-item {
+  background-color: white;
+  padding: 0.5rem;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+}
+
+.nutrition-label {
+  font-size: 0.75rem;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.nutrition-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.nutrition-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #38a169;
+  font-style: italic;
+  text-align: center;
+}
+
 .loading-state {
   text-align: center;
   padding: 2rem;

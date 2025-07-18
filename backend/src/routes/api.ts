@@ -430,4 +430,120 @@ router.get('/foods/:foodId/nutrition', async (req, res) => {
   }
 });
 
+// PUT /api/session/:sessionId/weight - Update weight for last ingredient and recalculate nutrition
+router.put('/session/:sessionId/weight', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { weight, unit = 'g' } = req.body;
+    
+    if (!weight || typeof weight !== 'number' || weight <= 0) {
+      return res.status(400).json({
+        error: 'Invalid weight',
+        code: 'INVALID_WEIGHT',
+        message: 'Weight must be a positive number'
+      } as ErrorResponse);
+    }
+
+    if (!['g', 'oz', 'lb'].includes(unit)) {
+      return res.status(400).json({
+        error: 'Invalid unit',
+        code: 'INVALID_UNIT',
+        message: 'Unit must be g, oz, or lb'
+      } as ErrorResponse);
+    }
+
+    // Get the session
+    const session = await sessionService.getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({
+        error: 'Session not found',
+        code: 'SESSION_NOT_FOUND',
+        message: 'The session has expired or does not exist'
+      } as ErrorResponse);
+    }
+
+    if (session.components.length === 0) {
+      return res.status(400).json({
+        error: 'No ingredients to update',
+        code: 'NO_INGREDIENTS',
+        message: 'Session has no ingredients to update weight for'
+      } as ErrorResponse);
+    }
+
+    // Get the last ingredient
+    const lastIngredient = session.components[session.components.length - 1];
+    
+    // Convert weight to grams for consistent storage
+    const { convertToGrams } = await import('../utils/conversions.js');
+    const weightInGrams = convertToGrams(weight, unit as any);
+    
+    // Validate weight against previous total if this isn't the first ingredient
+    if (session.components.length > 1) {
+      const previousTotalWeight = session.totalWeight - lastIngredient.weight;
+      if (weightInGrams <= previousTotalWeight) {
+        return res.status(400).json({
+          error: 'Invalid weight correction',
+          code: 'INVALID_WEIGHT_CORRECTION',
+          message: `Corrected weight (${weightInGrams.toFixed(1)}g) must be greater than previous total weight (${previousTotalWeight.toFixed(1)}g)`
+        } as ErrorResponse);
+      }
+    }
+
+    // Recalculate nutrition for the corrected weight
+    const updatedNutrition = await nutritionService.getNutritionData(
+      lastIngredient.food.id, 
+      weightInGrams
+    );
+
+    // Update the last ingredient
+    const updatedIngredient = {
+      ...lastIngredient,
+      weight: weightInGrams,
+      nutrition: updatedNutrition
+    };
+
+    // Update session components
+    const updatedComponents = [
+      ...session.components.slice(0, -1),
+      updatedIngredient
+    ];
+
+    // Recalculate total weight
+    const newTotalWeight = updatedComponents.reduce((sum, component) => sum + component.weight, 0);
+
+    // Update session
+    const updatedSession = {
+      ...session,
+      components: updatedComponents,
+      totalWeight: newTotalWeight,
+      lastUpdated: new Date()
+    };
+
+    // Save updated session
+    const savedSession = await sessionService.updateSession(sessionId, updatedSession);
+    if (!savedSession) {
+      return res.status(500).json({
+        error: 'Failed to update session',
+        code: 'SESSION_UPDATE_ERROR',
+        message: 'Could not save weight correction'
+      } as ErrorResponse);
+    }
+
+    return res.json({
+      success: true,
+      session: savedSession,
+      updatedIngredient,
+      message: 'Weight corrected and nutrition recalculated successfully'
+    });
+
+  } catch (error) {
+    console.error('Weight correction error:', error);
+    return res.status(500).json({
+      error: 'Weight correction failed',
+      code: 'WEIGHT_CORRECTION_ERROR',
+      message: 'An error occurred while correcting the weight'
+    } as ErrorResponse);
+  }
+});
+
 export default router;

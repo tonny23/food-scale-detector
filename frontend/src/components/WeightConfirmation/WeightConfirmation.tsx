@@ -11,20 +11,27 @@ interface WeightReading {
 interface WeightConfirmationProps {
   detectedWeight?: WeightReading;
   onWeightConfirm: (weight: number, unit: string) => void;
+  onWeightChange?: (weight: number, unit: string) => void; // For real-time nutrition updates
   isLoading?: boolean;
   previousWeight?: number;
+  currentNutrition?: any; // Current nutrition data for recalculation
+  showNutritionPreview?: boolean; // Whether to show nutrition preview
 }
 
 export const WeightConfirmation: React.FC<WeightConfirmationProps> = ({
   detectedWeight,
   onWeightConfirm,
+  onWeightChange,
   isLoading = false,
-  previousWeight
+  previousWeight,
+  currentNutrition,
+  showNutritionPreview = false
 }) => {
   const [manualEntry, setManualEntry] = useState(false);
   const [weight, setWeight] = useState<string>('');
   const [unit, setUnit] = useState<'g' | 'oz' | 'lb'>('g');
   const [error, setError] = useState<string>('');
+  const [previewNutrition, setPreviewNutrition] = useState<any>(null);
 
   useEffect(() => {
     if (detectedWeight) {
@@ -32,6 +39,40 @@ export const WeightConfirmation: React.FC<WeightConfirmationProps> = ({
       setUnit(detectedWeight.unit);
     }
   }, [detectedWeight]);
+
+  // Real-time weight change handling for nutrition recalculation
+  useEffect(() => {
+    if (onWeightChange && weight && !error && !isNaN(parseFloat(weight))) {
+      const weightValue = parseFloat(weight);
+      const validationError = validateWeight(weightValue);
+      
+      if (!validationError) {
+        // Trigger real-time nutrition update
+        onWeightChange(weightValue, unit);
+        
+        // Calculate preview nutrition if current nutrition is available
+        if (currentNutrition && showNutritionPreview) {
+          const weightInGrams = convertWeight(weightValue, unit, 'g');
+          const originalWeightInGrams = currentNutrition.baseWeight || 100; // Default to 100g base
+          const ratio = weightInGrams / originalWeightInGrams;
+          
+          const scaledNutrition = {
+            calories: Math.round(currentNutrition.calories * ratio),
+            protein: Math.round(currentNutrition.protein * ratio * 10) / 10,
+            carbohydrates: Math.round(currentNutrition.carbohydrates * ratio * 10) / 10,
+            fat: Math.round(currentNutrition.fat * ratio * 10) / 10,
+            fiber: Math.round(currentNutrition.fiber * ratio * 10) / 10,
+            sodium: Math.round(currentNutrition.sodium * ratio),
+            sugar: Math.round(currentNutrition.sugar * ratio * 10) / 10
+          };
+          
+          setPreviewNutrition(scaledNutrition);
+        }
+      } else {
+        setPreviewNutrition(null);
+      }
+    }
+  }, [weight, unit, onWeightChange, currentNutrition, showNutritionPreview, error]);
 
   const handleWeightChange = (value: string) => {
     setWeight(value);
@@ -46,12 +87,34 @@ export const WeightConfirmation: React.FC<WeightConfirmationProps> = ({
     if (weightValue <= 0) {
       return 'Weight must be greater than 0';
     }
-    if (weightValue > 10000) {
-      return 'Weight seems too high. Please check your input.';
+    
+    // Convert to grams for consistent validation
+    const weightInGrams = convertWeight(weightValue, unit, 'g');
+    
+    // Minimum reasonable weight (0.1g)
+    if (weightInGrams < 0.1) {
+      return 'Weight is too small. Minimum weight is 0.1g';
     }
-    if (previousWeight && weightValue <= previousWeight) {
-      return 'New weight should be greater than previous weight';
+    
+    // Maximum reasonable weight for food (10kg)
+    if (weightInGrams > 10000) {
+      return 'Weight seems too high. Maximum weight is 10kg (10,000g)';
     }
+    
+    // Check against previous weight for sequential additions
+    if (previousWeight) {
+      const previousWeightInGrams = convertWeight(previousWeight, 'g', 'g'); // Assume previousWeight is in grams
+      if (weightInGrams <= previousWeightInGrams) {
+        return `New weight (${weightInGrams.toFixed(1)}g) should be greater than previous weight (${previousWeightInGrams.toFixed(1)}g)`;
+      }
+      
+      // Check for unreasonably large additions (more than 5kg difference)
+      const difference = weightInGrams - previousWeightInGrams;
+      if (difference > 5000) {
+        return `Weight increase of ${difference.toFixed(1)}g seems too large. Please verify the reading.`;
+      }
+    }
+    
     return null;
   };
 
@@ -205,6 +268,41 @@ export const WeightConfirmation: React.FC<WeightConfirmationProps> = ({
                 <span>{convertWeight(parseFloat(weight), unit, 'oz').toFixed(2)}oz</span>
                 <span>{convertWeight(parseFloat(weight), unit, 'lb').toFixed(3)}lb</span>
               </div>
+            </div>
+          )}
+
+          {showNutritionPreview && previewNutrition && weight && !error && (
+            <div className="nutrition-preview">
+              <h4>Nutrition Preview:</h4>
+              <div className="nutrition-grid">
+                <div className="nutrition-item">
+                  <span className="nutrition-label">Calories</span>
+                  <span className="nutrition-value">{previewNutrition.calories}</span>
+                </div>
+                <div className="nutrition-item">
+                  <span className="nutrition-label">Protein</span>
+                  <span className="nutrition-value">{previewNutrition.protein}g</span>
+                </div>
+                <div className="nutrition-item">
+                  <span className="nutrition-label">Carbs</span>
+                  <span className="nutrition-value">{previewNutrition.carbohydrates}g</span>
+                </div>
+                <div className="nutrition-item">
+                  <span className="nutrition-label">Fat</span>
+                  <span className="nutrition-value">{previewNutrition.fat}g</span>
+                </div>
+                <div className="nutrition-item">
+                  <span className="nutrition-label">Fiber</span>
+                  <span className="nutrition-value">{previewNutrition.fiber}g</span>
+                </div>
+                <div className="nutrition-item">
+                  <span className="nutrition-label">Sugar</span>
+                  <span className="nutrition-value">{previewNutrition.sugar}g</span>
+                </div>
+              </div>
+              <p className="nutrition-note">
+                * Nutrition values update automatically as you change the weight
+              </p>
             </div>
           )}
 

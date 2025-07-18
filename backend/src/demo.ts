@@ -1,96 +1,141 @@
-/**
- * Demo script to test USDA API integration and OCR functionality
- */
+import { convertWeight, formatWeight, validateFoodWeight, scaleNutritionValues, calculateWeightDifference } from './utils/conversions.js';
+import { WeightReadingSchema, NutritionInfoSchema } from './schemas/validation.js';
 
-import { config } from 'dotenv';
-import { NutritionService } from './services/NutritionService.js';
-import { OCRService } from './services/OCRService.js';
-import { resolve } from 'path';
-import sharp from 'sharp';
+// Demo data for weight confirmation functionality
+const mockWeightReading = {
+  value: 150.5,
+  unit: 'g' as const,
+  confidence: 0.87,
+  rawText: '150.5g'
+};
 
-// Load environment variables from the correct path
-config({ path: resolve(process.cwd(), '.env') });
+const mockNutrition = {
+  calories: 78,
+  protein: 0.4,
+  carbohydrates: 21,
+  fat: 0.2,
+  fiber: 4,
+  sodium: 1,
+  sugar: 16,
+  saturatedFat: 0.1,
+  cholesterol: 0,
+  potassium: 161
+};
 
-async function testUSDAAPI() {
-  console.log('Testing USDA API integration and OCR functionality...');
-  console.log('API Key:', process.env.USDA_API_KEY ? `Present (${process.env.USDA_API_KEY.substring(0, 8)}...)` : 'Missing');
-  
-  const nutritionService = new NutritionService();
-  const ocrService = new OCRService();
-  
-  try {
-    console.log('\n1. Testing food search...');
-    const searchResults = await nutritionService.searchFoodDatabase('apple', 3);
-    console.log('Search results:', searchResults.length, 'foods found');
-    
-    if (searchResults.length > 0) {
-      console.log('First result:', searchResults[0]);
-      
-      console.log('\n2. Testing nutrition data retrieval...');
-      const nutrition = await nutritionService.getNutritionData(searchResults[0].id, 100);
-      console.log('Nutrition for 100g:', nutrition);
-      
-      console.log('\n3. Testing weight scaling...');
-      const nutrition200g = await nutritionService.getNutritionData(searchResults[0].id, 200);
-      console.log('Nutrition for 200g:', nutrition200g);
-      
-      console.log('\n4. Testing meal calculation...');
-      const mealComponents = [
-        {
-          food: searchResults[0],
-          weight: 100,
-          nutrition: nutrition,
-          addedAt: new Date()
-        }
-      ];
-      
-      const mealNutrition = await nutritionService.calculateMealNutrition(mealComponents);
-      console.log('Meal nutrition:', mealNutrition);
-    }
-    
-    console.log('\n5. Testing cache stats...');
-    const cacheStats = nutritionService.getCacheStats();
-    console.log('Cache stats:', cacheStats);
-    
-    console.log('\n6. Testing OCR functionality...');
-    
-    // Create a test image with scale display text
-    const testImage = await sharp({
-      create: {
-        width: 400,
-        height: 300,
-        channels: 3,
-        background: { r: 255, g: 255, b: 255 }
-      }
-    }).png().toBuffer();
+console.log('=== Weight Confirmation & Correction Demo ===\n');
 
-    console.log('   Created test image...');
-    
-    const weightReading = await ocrService.readScaleWeight(testImage);
-    console.log(`   OCR Result: ${weightReading.value}${weightReading.unit} (confidence: ${weightReading.confidence}%)`);
-    console.log(`   Raw text: "${weightReading.rawText}"`);
-    
-    // Test scale validation
-    const scaleValidation = await ocrService.validateScaleImage(testImage);
-    console.log(`   Scale detected: ${scaleValidation.hasScale} (confidence: ${scaleValidation.confidence}%)`);
-    
-    if (scaleValidation.suggestions.length > 0) {
-      console.log('   Suggestions:', scaleValidation.suggestions.slice(0, 2).join(', '));
-    }
-    
-    console.log('\n7. Testing OCR error handling...');
-    const emptyBuffer = Buffer.alloc(0);
-    const errorResult = await ocrService.readScaleWeight(emptyBuffer);
-    console.log(`   Empty image result: confidence ${errorResult.confidence}%, message: "${errorResult.rawText}"`);
-    
-  } catch (error) {
-    console.error('Error during testing:', error);
-  }
+// Test weight reading validation
+console.log('1. Weight Reading Validation:');
+try {
+  const validatedWeight = WeightReadingSchema.parse(mockWeightReading);
+  console.log('✅ Weight reading is valid:', validatedWeight);
+  console.log(`   Confidence: ${(validatedWeight.confidence * 100).toFixed(1)}%`);
+} catch (error) {
+  console.log('❌ Weight reading validation failed:', error);
 }
 
-// Run the test
-testUSDAAPI().then(() => {
-  console.log('\nDemo completed!');
-}).catch(error => {
-  console.error('Demo failed:', error);
+// Test nutrition info validation
+console.log('\n2. Nutrition Info Validation:');
+try {
+  const validatedNutrition = NutritionInfoSchema.parse(mockNutrition);
+  console.log('✅ Nutrition info is valid');
+  console.log(`   Calories: ${validatedNutrition.calories}, Protein: ${validatedNutrition.protein}g`);
+} catch (error) {
+  console.log('❌ Nutrition info validation failed:', error);
+}
+
+// Test unit conversions for weight confirmation
+console.log('\n3. Weight Unit Conversions:');
+const testWeights = [
+  { value: 150, unit: 'g' as const },
+  { value: 5.3, unit: 'oz' as const },
+  { value: 0.33, unit: 'lb' as const }
+];
+
+testWeights.forEach(weight => {
+  console.log(`${weight.value}${weight.unit}:`);
+  console.log(`  → ${convertWeight(weight.value, weight.unit, 'g').toFixed(1)}g`);
+  console.log(`  → ${convertWeight(weight.value, weight.unit, 'oz').toFixed(2)}oz`);
+  console.log(`  → ${convertWeight(weight.value, weight.unit, 'lb').toFixed(3)}lb`);
 });
+
+// Test weight validation for different scenarios
+console.log('\n4. Weight Validation Scenarios:');
+const validationTests = [
+  { weight: 100, unit: 'g', desc: 'Normal weight' },
+  { weight: 0.05, unit: 'g', desc: 'Too small' },
+  { weight: 15000, unit: 'g', desc: 'Too large' },
+  { weight: -10, unit: 'g', desc: 'Negative weight' },
+  { weight: 2.5, unit: 'lb', desc: 'Normal weight in pounds' }
+];
+
+validationTests.forEach(test => {
+  const isValid = validateFoodWeight(test.weight, test.unit as any);
+  console.log(`${test.weight}${test.unit} (${test.desc}): ${isValid ? '✅ Valid' : '❌ Invalid'}`);
+});
+
+// Test sequential weight additions (for multi-ingredient meals)
+console.log('\n5. Sequential Weight Addition:');
+try {
+  const previousWeight = 150; // grams
+  const currentWeight = 275; // grams
+  
+  const difference = calculateWeightDifference(currentWeight, 'g', previousWeight, 'g');
+  console.log(`Previous weight: ${previousWeight}g`);
+  console.log(`Current weight: ${currentWeight}g`);
+  console.log(`New ingredient weight: ${difference.difference.toFixed(1)}${difference.unit}`);
+} catch (error) {
+  console.log('❌ Weight difference calculation failed:', error);
+}
+
+// Test nutrition recalculation for weight corrections
+console.log('\n6. Nutrition Recalculation for Weight Corrections:');
+const originalWeight = 100; // grams
+const correctedWeights = [150, 200, 75]; // grams
+
+console.log(`Original nutrition (${originalWeight}g):`, mockNutrition);
+
+correctedWeights.forEach(newWeight => {
+  const scaledNutrition = scaleNutritionValues(mockNutrition, originalWeight, newWeight);
+  console.log(`\nCorrected nutrition (${newWeight}g):`);
+  console.log(`  Calories: ${scaledNutrition.calories} (${((scaledNutrition.calories / mockNutrition.calories - 1) * 100).toFixed(0)}% change)`);
+  console.log(`  Protein: ${scaledNutrition.protein}g`);
+  console.log(`  Carbs: ${scaledNutrition.carbohydrates}g`);
+});
+
+// Test weight correction validation
+console.log('\n7. Weight Correction Validation:');
+const correctionScenarios = [
+  { current: 200, previous: 150, desc: 'Valid increase' },
+  { current: 150, previous: 200, desc: 'Invalid decrease' },
+  { current: 150, previous: 150, desc: 'No change' },
+  { current: 6000, previous: 150, desc: 'Too large increase' }
+];
+
+correctionScenarios.forEach(scenario => {
+  try {
+    if (scenario.current <= scenario.previous) {
+      throw new Error('New weight must be greater than previous weight');
+    }
+    if (scenario.current - scenario.previous > 5000) {
+      throw new Error('Weight increase too large');
+    }
+    console.log(`${scenario.current}g → ${scenario.previous}g (${scenario.desc}): ✅ Valid`);
+  } catch (error) {
+    console.log(`${scenario.current}g → ${scenario.previous}g (${scenario.desc}): ❌ ${error.message}`);
+  }
+});
+
+// Test real-time nutrition preview calculation
+console.log('\n8. Real-time Nutrition Preview:');
+const baseNutrition = { ...mockNutrition, baseWeight: 100 };
+const previewWeights = [50, 100, 150, 200, 300];
+
+console.log('Weight → Calories (Preview):');
+previewWeights.forEach(weight => {
+  const ratio = weight / baseNutrition.baseWeight;
+  const previewCalories = Math.round(baseNutrition.calories * ratio);
+  console.log(`  ${weight}g → ${previewCalories} calories`);
+});
+
+console.log('\n=== Weight Confirmation Demo Complete ===');

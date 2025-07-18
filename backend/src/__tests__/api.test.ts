@@ -206,4 +206,134 @@ describe('API Endpoints', () => {
       expect(response.body).toHaveProperty('expiresIn', 7200);
     });
   });
+
+  describe('PUT /api/session/:sessionId/weight', () => {
+    beforeEach(() => {
+      // Mock session with existing ingredient
+      jest.spyOn(sessionService, 'getSession').mockResolvedValue({
+        id: 'test-session-123',
+        components: [{
+          food: {
+            id: 'test-food',
+            name: 'Apple',
+            confidence: 0.85,
+            alternativeNames: [],
+            category: 'Fruits'
+          },
+          weight: 150,
+          nutrition: {
+            calories: 78,
+            protein: 0.4,
+            carbohydrates: 21,
+            fat: 0.2,
+            fiber: 4,
+            sodium: 1,
+            sugar: 16,
+            saturatedFat: 0.1,
+            cholesterol: 0,
+            potassium: 161
+          },
+          addedAt: new Date()
+        }],
+        totalWeight: 150,
+        previousWeight: 0,
+        createdAt: new Date(),
+        lastUpdated: new Date()
+      });
+
+      jest.spyOn(sessionService, 'updateSession').mockResolvedValue({
+        id: 'test-session-123',
+        components: [{
+          food: {
+            id: 'test-food',
+            name: 'Apple',
+            confidence: 0.85,
+            alternativeNames: [],
+            category: 'Fruits'
+          },
+          weight: 200,
+          nutrition: {
+            calories: 104,
+            protein: 0.5,
+            carbohydrates: 28,
+            fat: 0.3,
+            fiber: 5,
+            sodium: 1,
+            sugar: 21,
+            saturatedFat: 0.1,
+            cholesterol: 0,
+            potassium: 215
+          },
+          addedAt: new Date()
+        }],
+        totalWeight: 200,
+        previousWeight: 0,
+        createdAt: new Date(),
+        lastUpdated: new Date()
+      });
+    });
+
+    it('should update weight and recalculate nutrition successfully', async () => {
+      const response = await request(app)
+        .put('/api/session/test-session-123/weight')
+        .send({ weight: 200, unit: 'g' })
+        .expect(200);
+
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('session');
+      expect(response.body).toHaveProperty('updatedIngredient');
+      expect(response.body).toHaveProperty('message', 'Weight corrected and nutrition recalculated successfully');
+    });
+
+    it('should reject invalid weight values', async () => {
+      const response = await request(app)
+        .put('/api/session/test-session-123/weight')
+        .send({ weight: -10, unit: 'g' })
+        .expect(400);
+
+      expect(response.body).toHaveProperty('error', 'Invalid weight');
+      expect(response.body).toHaveProperty('code', 'INVALID_WEIGHT');
+    });
+
+    it('should reject invalid units', async () => {
+      const response = await request(app)
+        .put('/api/session/test-session-123/weight')
+        .send({ weight: 200, unit: 'kg' })
+        .expect(400);
+
+      expect(response.body).toHaveProperty('error', 'Invalid unit');
+      expect(response.body).toHaveProperty('code', 'INVALID_UNIT');
+    });
+
+    it('should reject weight correction for non-existent session', async () => {
+      jest.spyOn(sessionService, 'getSession').mockResolvedValue(null);
+
+      const response = await request(app)
+        .put('/api/session/non-existent-session/weight')
+        .send({ weight: 200, unit: 'g' })
+        .expect(404);
+
+      expect(response.body).toHaveProperty('error', 'Session not found');
+      expect(response.body).toHaveProperty('code', 'SESSION_NOT_FOUND');
+    });
+
+    it('should reject weight correction for session with no ingredients', async () => {
+      jest.spyOn(sessionService, 'getSession').mockResolvedValue({
+        id: 'test-session-123',
+        components: [],
+        totalWeight: 0,
+        previousWeight: 0,
+        createdAt: new Date(),
+        lastUpdated: new Date()
+      });
+
+      const response = await request(app)
+        .put('/api/session/test-session-123/weight')
+        .send({ weight: 200, unit: 'g' })
+        .expect(400);
+
+      expect(response.body).toHaveProperty('error', 'No ingredients to update');
+      expect(response.body).toHaveProperty('code', 'NO_INGREDIENTS');
+    });
+  });
 });
