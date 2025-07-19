@@ -1,0 +1,1 @@
+export { NutritionDisplay } from './NutritionDisplay';

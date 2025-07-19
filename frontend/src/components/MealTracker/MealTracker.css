@@ -342,8 +342,34 @@
   color: white;
 }
 
-.finalize-meal-btn:hover {
+.finalize-meal-btn:hover:not(:disabled) {
   background-color: #3182ce;
+}
+
+.finalize-meal-btn:disabled {
+  background-color: #a0aec0;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Cumulative Nutrition Section */
+.cumulative-nutrition-section {
+  margin-bottom: 2rem;
+}
+
+.cumulative-nutrition-section h3 {
+  margin: 0 0 1.5rem 0;
+  color: #2d3748;
+  font-size: 1.5rem;
+  text-align: center;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #4299e1;
+}
+
+.meal-nutrition-display {
+  border: 3px solid #4299e1;
+  box-shadow: 0 8px 16px rgba(66, 153, 225, 0.15);
+  background: linear-gradient(135deg, #ffffff, #f7fafc);
 }
 
 /* Weight Info */

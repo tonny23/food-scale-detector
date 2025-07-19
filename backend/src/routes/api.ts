@@ -460,6 +460,80 @@ router.get('/session/:sessionId/summary', async (req, res) => {
   }
 });
 
+// POST /api/session/:sessionId/finalize - Finalize meal and get complete nutrition breakdown
+router.post('/session/:sessionId/finalize', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    const session = await sessionService.getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({
+        error: 'Session not found',
+        code: 'SESSION_NOT_FOUND',
+        message: 'The session has expired or does not exist'
+      } as ErrorResponse);
+    }
+
+    if (session.components.length === 0) {
+      return res.status(400).json({
+        error: 'No ingredients to finalize',
+        code: 'NO_INGREDIENTS',
+        message: 'Cannot finalize a meal with no ingredients'
+      } as ErrorResponse);
+    }
+
+    // Calculate final meal nutrition
+    const totalNutrition = session.components.reduce((total, component) => ({
+      calories: total.calories + component.nutrition.calories,
+      protein: total.protein + component.nutrition.protein,
+      carbohydrates: total.carbohydrates + component.nutrition.carbohydrates,
+      fat: total.fat + component.nutrition.fat,
+      fiber: total.fiber + component.nutrition.fiber,
+      sodium: total.sodium + component.nutrition.sodium,
+      sugar: total.sugar + component.nutrition.sugar,
+      saturatedFat: total.saturatedFat + component.nutrition.saturatedFat,
+      cholesterol: total.cholesterol + component.nutrition.cholesterol,
+      potassium: total.potassium + component.nutrition.potassium
+    }), {
+      calories: 0,
+      protein: 0,
+      carbohydrates: 0,
+      fat: 0,
+      fiber: 0,
+      sodium: 0,
+      sugar: 0,
+      saturatedFat: 0,
+      cholesterol: 0,
+      potassium: 0
+    });
+
+    const mealNutrition = {
+      totalNutrition,
+      components: session.components,
+      totalWeight: session.totalWeight
+    };
+
+    // Optionally extend session expiration for meal review
+    await sessionService.extendSession(sessionId, 7200); // 2 hours
+
+    return res.json({
+      success: true,
+      sessionId,
+      mealNutrition,
+      finalizedAt: new Date(),
+      message: 'Meal finalized successfully'
+    });
+
+  } catch (error) {
+    console.error('Meal finalization error:', error);
+    return res.status(500).json({
+      error: 'Meal finalization failed',
+      code: 'FINALIZATION_ERROR',
+      message: 'An error occurred while finalizing the meal'
+    } as ErrorResponse);
+  }
+});
+
 // PUT /api/session/:sessionId/weight - Update weight for last ingredient and recalculate nutrition
 router.put('/session/:sessionId/weight', async (req, res) => {
   try {

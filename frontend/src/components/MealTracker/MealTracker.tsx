@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NutritionDisplay } from '../NutritionDisplay';
 import './MealTracker.css';
 
 interface NutritionInfo {
@@ -38,10 +39,16 @@ interface MealSession {
   lastUpdated: Date;
 }
 
+interface MealNutrition {
+  totalNutrition: NutritionInfo;
+  components: MealComponent[];
+  totalWeight: number;
+}
+
 interface MealTrackerProps {
   sessionId: string;
   onAddIngredient: () => void;
-  onFinalizeMeal: () => void;
+  onFinalizeMeal: (mealNutrition: MealNutrition) => void;
   onWeightCorrection?: (componentIndex: number, newWeight: number) => void;
   showActions?: boolean;
 }
@@ -59,6 +66,7 @@ export const MealTracker: React.FC<MealTrackerProps> = ({
   const [error, setError] = useState<string>('');
   const [editingWeight, setEditingWeight] = useState<number | null>(null);
   const [newWeight, setNewWeight] = useState<string>('');
+  const [isFinalizingMeal, setIsFinalizingMeal] = useState(false);
 
   useEffect(() => {
     fetchSession();
@@ -165,6 +173,35 @@ export const MealTracker: React.FC<MealTrackerProps> = ({
       setNewWeight('');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to update weight');
+    }
+  };
+
+  const handleFinalizeMeal = async () => {
+    if (!session || session.components.length === 0) return;
+
+    try {
+      setIsFinalizingMeal(true);
+
+      const response = await fetch(`/api/session/${sessionId}/finalize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to finalize meal');
+      }
+
+      const result = await response.json();
+      
+      // Call parent callback with meal nutrition data
+      onFinalizeMeal(result.mealNutrition);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to finalize meal');
+    } finally {
+      setIsFinalizingMeal(false);
     }
   };
 
@@ -295,24 +332,13 @@ export const MealTracker: React.FC<MealTrackerProps> = ({
                   </div>
                   
                   <div className="ingredient-nutrition">
-                    <div className="nutrition-grid">
-                      <div className="nutrition-item">
-                        <span className="nutrition-label">Calories</span>
-                        <span className="nutrition-value">{component.nutrition.calories}</span>
-                      </div>
-                      <div className="nutrition-item">
-                        <span className="nutrition-label">Protein</span>
-                        <span className="nutrition-value">{formatNutritionValue(component.nutrition.protein, 'g')}</span>
-                      </div>
-                      <div className="nutrition-item">
-                        <span className="nutrition-label">Carbs</span>
-                        <span className="nutrition-value">{formatNutritionValue(component.nutrition.carbohydrates, 'g')}</span>
-                      </div>
-                      <div className="nutrition-item">
-                        <span className="nutrition-label">Fat</span>
-                        <span className="nutrition-value">{formatNutritionValue(component.nutrition.fat, 'g')}</span>
-                      </div>
-                    </div>
+                    <NutritionDisplay
+                      nutrition={component.nutrition}
+                      food={component.food}
+                      weight={component.weight}
+                      compact={true}
+                      showTitle={false}
+                    />
                   </div>
                 </div>
               ))}
@@ -321,50 +347,21 @@ export const MealTracker: React.FC<MealTrackerProps> = ({
 
           {/* Cumulative Nutrition Summary */}
           {cumulativeNutrition && (
-            <div className="nutrition-summary">
-              <h3>Total Nutrition</h3>
-              
-              {/* Featured Calories */}
-              <div className="calories-display">
-                <div className="calories-value">{cumulativeNutrition.calories}</div>
-                <div className="calories-label">Total Calories</div>
-              </div>
-
-              {/* Macronutrients */}
-              <div className="macros-grid">
-                <div className="macro-item">
-                  <div className="macro-value">{formatNutritionValue(cumulativeNutrition.protein, 'g')}</div>
-                  <div className="macro-label">Protein</div>
-                </div>
-                <div className="macro-item">
-                  <div className="macro-value">{formatNutritionValue(cumulativeNutrition.carbohydrates, 'g')}</div>
-                  <div className="macro-label">Carbs</div>
-                </div>
-                <div className="macro-item">
-                  <div className="macro-value">{formatNutritionValue(cumulativeNutrition.fat, 'g')}</div>
-                  <div className="macro-label">Fat</div>
-                </div>
-              </div>
-
-              {/* Other Nutrients */}
-              <div className="other-nutrients">
-                <div className="nutrient-row">
-                  <span>Fiber</span>
-                  <span>{formatNutritionValue(cumulativeNutrition.fiber, 'g')}</span>
-                </div>
-                <div className="nutrient-row">
-                  <span>Sugar</span>
-                  <span>{formatNutritionValue(cumulativeNutrition.sugar, 'g')}</span>
-                </div>
-                <div className="nutrient-row">
-                  <span>Sodium</span>
-                  <span>{formatNutritionValue(cumulativeNutrition.sodium, 'mg')}</span>
-                </div>
-                <div className="nutrient-row">
-                  <span>Potassium</span>
-                  <span>{formatNutritionValue(cumulativeNutrition.potassium, 'mg')}</span>
-                </div>
-              </div>
+            <div className="cumulative-nutrition-section">
+              <h3>Total Meal Nutrition</h3>
+              <NutritionDisplay
+                nutrition={cumulativeNutrition}
+                food={{
+                  id: 'meal-total',
+                  name: 'Complete Meal',
+                  confidence: 100,
+                  alternativeNames: [],
+                  category: 'Meal'
+                }}
+                weight={session.totalWeight}
+                showTitle={true}
+                className="meal-nutrition-display"
+              />
             </div>
           )}
         </>
@@ -381,10 +378,11 @@ export const MealTracker: React.FC<MealTrackerProps> = ({
           </button>
           {session.components.length > 0 && (
             <button
-              onClick={onFinalizeMeal}
+              onClick={handleFinalizeMeal}
               className="finalize-meal-btn"
+              disabled={isFinalizingMeal}
             >
-              Finalize Meal
+              {isFinalizingMeal ? 'Finalizing...' : 'Finalize Meal'}
             </button>
           )}
         </div>

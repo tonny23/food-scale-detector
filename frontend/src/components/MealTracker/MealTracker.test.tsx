@@ -101,12 +101,12 @@ describe('MealTracker', () => {
     render(<MealTracker {...mockProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Total Nutrition')).toBeInTheDocument();
+      expect(screen.getByText('Total Meal Nutrition')).toBeInTheDocument();
     });
 
     // Total calories should be 78 + 105 = 183
     expect(screen.getByText('183')).toBeInTheDocument();
-    expect(screen.getByText('Total Calories')).toBeInTheDocument();
+    expect(screen.getByText('Calories')).toBeInTheDocument();
 
     // Total protein should be 0.5 + 1.3 = 1.8g
     expect(screen.getByText('1.8g')).toBeInTheDocument();
@@ -134,6 +134,38 @@ describe('MealTracker', () => {
   });
 
   it('calls onFinalizeMeal when finalize meal button is clicked', async () => {
+    // Mock the finalize meal API call
+    const mockMealNutrition = {
+      totalNutrition: {
+        calories: 183,
+        protein: 1.8,
+        carbohydrates: 48,
+        fat: 0.7,
+        fiber: 6.7,
+        sodium: 3,
+        sugar: 30,
+        saturatedFat: 0.2,
+        cholesterol: 0,
+        potassium: 583
+      },
+      components: mockSession.components,
+      totalWeight: 270
+    };
+
+    // First mock the session fetch, then the finalize call
+    (fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSession)
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          success: true,
+          mealNutrition: mockMealNutrition
+        })
+      });
+
     render(<MealTracker {...mockProps} />);
 
     await waitFor(() => {
@@ -141,7 +173,10 @@ describe('MealTracker', () => {
     });
 
     fireEvent.click(screen.getByText('Finalize Meal'));
-    expect(mockProps.onFinalizeMeal).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(mockProps.onFinalizeMeal).toHaveBeenCalledWith(mockMealNutrition);
+    });
   });
 
   it('allows weight editing for ingredients', async () => {
